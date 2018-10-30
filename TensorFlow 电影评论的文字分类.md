@@ -362,9 +362,7 @@ model.fit()返回一个History对象，其中包含一个字典，其中包含�
     # Create a graph of accuracy and loss over time
     history_dict = history.history
     history_dict.keys()
-    
-    dict_keys(['acc','val_loss','loss','val_acc'])
-    
+       
     
     import matplotlib.pyplot as plt
     
