@@ -1,6 +1,6 @@
 Eager执行基础
 
-[GitHub](https://github.com/tensorflow/docs/blob/master/site/en/tutorials/eager/eager_basics.ipynb)
+[原文地址](https://tensorflow.google.cn/tutorials/eager/eager_basics)
 
 这是使用TensorFlow的入门教程。 它将涵盖：  
 
@@ -145,9 +145,46 @@ TensorFlow中的术语“placement”指的是如何为执行设备分配（放�
 
 ### Create a source Dataset ###
 
+使用其中一个工厂函数（如Dataset.from_tensors，Dataset.from_tensor_slices）或使用从TextLineDataset或TFRecordDataset等文件读取的对象创建源数据集。 有关更多信息，请参阅TensorFlow指南。
 
+    ds_tensors = tf.data.Dataset.from_tensor_slices([1, 2, 3, 4, 5, 6])
+    
+    # Create a CSV file
+    import tempfile
+    _, filename = tempfile.mkstemp()
+    
+    with open(filename, 'w') as f:
+      f.write("""Line 1
+    Line 2
+    Line 3
+      """)
+    
+    ds_file = tf.data.TextLineDataset(filename)
 
+### 应用转换 ###
 
+使用map，batch，shuffle等转换函数将转换应用于数据集的记录。 有关详细信息，请参阅tf.data.Dataset的API文档。
 
+    ds_tensors = ds_tensors.map(tf.square).shuffle(2).batch(2)
+    ds_file = ds_file.batch(2)
 
+### 迭代 ###
 
+启用eager执行时，Dataset对象支持迭代。 如果您熟悉TensorFlow图中数据集的使用，请注意不需要调用Dataset.make_one_shot_iterator（）或get_next（）调用。
+
+    print('Elements of ds_tensors:')
+    for x in ds_tensors:
+      print(x)
+    
+    print('\nElements in ds_file:')
+    for x in ds_file:
+      print(x)
+
+*Elements of ds_tensors:
+tf.Tensor([4 1], shape=(2,), dtype=int32)
+tf.Tensor([16 25], shape=(2,), dtype=int32)
+tf.Tensor([36  9], shape=(2,), dtype=int32)
+
+Elements in ds_file:
+tf.Tensor([b'Line 1' b'Line 2'], shape=(2,), dtype=string)
+tf.Tensor([b'Line 3' b'  '], shape=(2,), dtype=string)*

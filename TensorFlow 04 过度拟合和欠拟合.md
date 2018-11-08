@@ -1,3 +1,5 @@
+[原文地址](https://tensorflow.google.cn/tutorials/keras/overfit_and_underfit)
+
 与往常一样，此示例中的代码将使用tf.keras API，您可以在TensorFlow Keras指南中了解更多信息。
 
 在前面的两个例子中 - 分类电影评论和预测住房价格 - 我们看到我们的模型对验证数据的准确性在经过多个时期的训练后会达到峰值，然后开始下降。

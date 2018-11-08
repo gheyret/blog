@@ -1,4 +1,7 @@
 # TensorFlow 训练你的第一个神经网络：基本分类 #
+
+[原文地址](https://tensorflow.google.cn/tutorials/keras/basic_classification)               
+
 本指南训练神经网络模型，对运动鞋和衬衫等服装图像进行分类。 如果您不了解所有细节，这是可以的，这是一个完整的TensorFlow程序的快节奏概述，详细解释了我们的细节。  
 本指南使用tf.keras，一个高级API，用于在TensorFlow中构建和训练模型。
     
