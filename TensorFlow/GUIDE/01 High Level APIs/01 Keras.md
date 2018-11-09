@@ -247,12 +247,548 @@ Epoch 10/10
 
 ### Evaluate and predict ###
 
+tf.keras.Model.evaluate和tf.keras.Model.predict方法可以使用NumPy数据和tf.data.Dataset。
+
+要评估所提供数据的推理模式损失和指标：
+
+    data = np.random.random((1000, 32))
+    labels = np.random.random((1000, 10))
+    
+    model.evaluate(data, labels, batch_size=32)
+    
+    model.evaluate(dataset, steps=30)
+    
+*1000/1000 [==============================] - 0s 83us/step
+30/30 [==============================] - 0s 3ms/step*
+
+*[11.43181880315145, 0.18333333333333332]*
+
+    result = model.predict(data, batch_size=32)
+    print(result.shape)
+
+*(1000, 10)*
+
+## Build advanced models ##
+
+### Functional API ###
+
+tf.keras.Sequential模型是一个简单的图层堆栈，不能代表任意模型。 使用Keras功能API构建复杂的模型拓扑，例如：
+
+     Multi-input models多输入型号，  
+     Multi-output models多输出型号，  
+     具有共享层的模型（同一层被调用多次），  
+     具有非顺序数据流的模型（例如，残余连接）。
+
+使用功能API构建模型的工作方式如下：
+
+     1. 图层实例可调用并返回张量。  
+     2. 输入张量和输出张量用于定义tf.keras.Model实例。  
+     3. 这个模型的训练就像顺序模型一样。
+
+以下示例使用功能API构建一个简单，完全连接的网络：
+
+    inputs = tf.keras.Input(shape=(32,))  # Returns a placeholder tensor
+    
+    # A layer instance is callable on a tensor, and returns a tensor.
+    x = layers.Dense(64, activation='relu')(inputs)
+    x = layers.Dense(64, activation='relu')(x)
+    predictions = layers.Dense(10, activation='softmax')(x)
+
+实例化给定输入和输出的模型。
+
+    model = tf.keras.Model(inputs=inputs, outputs=predictions)
+    
+    # The compile step specifies the training configuration.
+    model.compile(optimizer=tf.train.RMSPropOptimizer(0.001),
+      loss='categorical_crossentropy',
+      metrics=['accuracy'])
+    
+    # Trains for 5 epochs
+    model.fit(data, labels, batch_size=32, epochs=5)
+
+*Epoch 1/5
+1000/1000 [==============================] - 0s 260us/step - loss: 11.7190 - acc: 0.1080
+Epoch 2/5
+1000/1000 [==============================] - 0s 75us/step - loss: 11.5347 - acc: 0.1010
+Epoch 3/5
+1000/1000 [==============================] - 0s 74us/step - loss: 11.5020 - acc: 0.1100
+Epoch 4/5
+1000/1000 [==============================] - 0s 75us/step - loss: 11.4908 - acc: 0.1090
+Epoch 5/5
+1000/1000 [==============================] - 0s 74us/step - loss: 11.4809 - acc: 0.1330
+*
+
+### Model subclassing ###
+
+通过继承tf.keras.Model并定义自己的前向传递来构建完全可自定义的模型。 在__init__方法中创建图层并将它们设置为类实例的属性。 在call方法中定义前向传递。
+
+当启用eager执行时，模型子类化特别有用，因为可以强制写入前向传递。
+
+*关键点：为工作使用正确的API。 虽然模型子类化提供了灵活性，但其代价是更高的复杂性和更多的用户错误机会。 如果可能，请选择功能API。*
+
+以下示例显示了使用自定义正向传递的子类tf.keras.Model：
+
+    class MyModel(tf.keras.Model):
+    
+      def __init__(self, num_classes=10):
+	    super(MyModel, self).__init__(name='my_model')
+	    self.num_classes = num_classes
+	    # Define your layers here.
+	    self.dense_1 = layers.Dense(32, activation='relu')
+	    self.dense_2 = layers.Dense(num_classes, activation='sigmoid')
+    
+      def call(self, inputs):
+	    # Define your forward pass here,
+	    # using layers you previously defined (in `__init__`).
+	    x = self.dense_1(inputs)
+	    return self.dense_2(x)
+    
+      def compute_output_shape(self, input_shape):
+	    # You need to override this function if you want to use the subclassed model
+	    # as part of a functional-style model.
+	    # Otherwise, this method is optional.
+	    shape = tf.TensorShape(input_shape).as_list()
+	    shape[-1] = self.num_classes
+	    return tf.TensorShape(shape)
+
+实例化新的模型类：
+
+    model = MyModel(num_classes=10)
+    
+    # The compile step specifies the training configuration.
+    model.compile(optimizer=tf.train.RMSPropOptimizer(0.001),
+      loss='categorical_crossentropy',
+      metrics=['accuracy'])
+    
+    # Trains for 5 epochs.
+    model.fit(data, labels, batch_size=32, epochs=5)
+
+*Epoch 1/5
+1000/1000 [==============================] - 0s 224us/step - loss: 11.5206 - acc: 0.0990
+Epoch 2/5
+1000/1000 [==============================] - 0s 62us/step - loss: 11.5128 - acc: 0.1070
+Epoch 3/5
+1000/1000 [==============================] - 0s 64us/step - loss: 11.5023 - acc: 0.0980
+Epoch 4/5
+1000/1000 [==============================] - 0s 65us/step - loss: 11.4941 - acc: 0.0980
+Epoch 5/5
+1000/1000 [==============================] - 0s 66us/step - loss: 11.4879 - acc: 0.0990
+*
+
+### Custom layers ###
+
+通过继承tf.keras.layers.Layer并实现以下方法来创建自定义层：
+
+1. build：创建图层的权重。 使用add_weight方法添加权重。  
+2. call：定义前向传播。  
+3. compute_output_shape：指定在给定输入形状的情况下如何计算图层的输出形状。  
+4. Optionally，可以通过实现get_config方法和from_config类方法来序列化层。
+
+这是一个自定义层的示例，它使用内核矩阵实现输入的matmul：
+
+    class MyLayer(layers.Layer):
+    
+      def __init__(self, output_dim, **kwargs):
+	    self.output_dim = output_dim
+	    super(MyLayer, self).__init__(**kwargs)
+    
+      def build(self, input_shape):
+	    shape = tf.TensorShape((input_shape[1], self.output_dim))
+	    # Create a trainable weight variable for this layer.
+	    self.kernel = self.add_weight(name='kernel',
+	      shape=shape,
+	      initializer='uniform',
+	      trainable=True)
+	    # Be sure to call this at the end
+	    super(MyLayer, self).build(input_shape)
+	    
+      def call(self, inputs):
+    	return tf.matmul(inputs, self.kernel)
+    
+      def compute_output_shape(self, input_shape):
+	    shape = tf.TensorShape(input_shape).as_list()
+	    shape[-1] = self.output_dim
+	    return tf.TensorShape(shape)
+	    
+      def get_config(self):
+	    base_config = super(MyLayer, self).get_config()
+	    base_config['output_dim'] = self.output_dim
+	    return base_config
+	    
+      @classmethod
+      def from_config(cls, config):
+    	return cls(**config)
+
+使用自定义图层创建模型：
+
+    model = tf.keras.Sequential([
+	    MyLayer(10),
+	    layers.Activation('softmax')])
+    
+    # The compile step specifies the training configuration
+    model.compile(optimizer=tf.train.RMSPropOptimizer(0.001),
+      loss='categorical_crossentropy',
+      metrics=['accuracy'])
+    
+    # Trains for 5 epochs.
+    model.fit(data, labels, batch_size=32, epochs=5)
+
+*Epoch 1/5
+1000/1000 [==============================] - 0s 170us/step - loss: 11.4872 - acc: 0.0990
+Epoch 2/5
+1000/1000 [==============================] - 0s 52us/step - loss: 11.4817 - acc: 0.0910
+Epoch 3/5
+1000/1000 [==============================] - 0s 52us/step - loss: 11.4800 - acc: 0.0960
+Epoch 4/5
+1000/1000 [==============================] - 0s 57us/step - loss: 11.4778 - acc: 0.0960
+Epoch 5/5
+1000/1000 [==============================] - 0s 60us/step - loss: 11.4764 - acc: 0.0930*
+
+## Callbacks ##
+
+回调是传递给模型的对象，用于在训练期间自定义和扩展其行为。 您可以编写自己的自定义回调，或使用包含以下内置的tf.keras.callbacks：
+
+tf.keras.callbacks.ModelCheckpoint：定期保存模型的检查点。  
+tf.keras.callbacks.LearningRateScheduler：动态改变学习率。  
+tf.keras.callbacks.EarlyStopping：验证性能停止改进时的中断培训。  
+tf.keras.callbacks.TensorBoard：使用TensorBoard监控模型的行为。
+
+要使用tf.keras.callbacks.Callback，请将其传递给模型的fit方法：
+
+    callbacks = [
+      # Interrupt training if `val_loss` stops improving for over 2 epochs
+      tf.keras.callbacks.EarlyStopping(patience=2, monitor='val_loss'),
+      # Write TensorBoard logs to `./logs` directory
+      tf.keras.callbacks.TensorBoard(log_dir='./logs')
+    ]
+    model.fit(data, labels, batch_size=32, epochs=5, callbacks=callbacks,
+      validation_data=(val_data, val_labels))
+
+*Train on 1000 samples, validate on 100 samples
+Epoch 1/5
+1000/1000 [==============================] - 0s 150us/step - loss: 11.4748 - acc: 0.1230 - val_loss: 10.9787 - val_acc: 0.1000
+Epoch 2/5
+1000/1000 [==============================] - 0s 78us/step - loss: 11.4730 - acc: 0.1060 - val_loss: 10.9783 - val_acc: 0.1300
+Epoch 3/5
+1000/1000 [==============================] - 0s 82us/step - loss: 11.4711 - acc: 0.1130 - val_loss: 10.9756 - val_acc: 0.1500
+Epoch 4/5
+1000/1000 [==============================] - 0s 82us/step - loss: 11.4704 - acc: 0.1050 - val_loss: 10.9772 - val_acc: 0.0900
+Epoch 5/5
+1000/1000 [==============================] - 0s 83us/step - loss: 11.4689 - acc: 0.1140 - val_loss: 10.9781 - val_acc: 0.1300
+*
+
+## Save and restore ##
+
+### Weights only ###
+
+使用tf.keras.Model.save_weights保存并加载模型的权重：
+
+    model = tf.keras.Sequential([
+    layers.Dense(64, activation='relu'),
+    layers.Dense(10, activation='softmax')])
+    
+    model.compile(optimizer=tf.train.AdamOptimizer(0.001),
+      loss='categorical_crossentropy',
+      metrics=['accuracy'])
+
+    # Save weights to a TensorFlow Checkpoint file
+    model.save_weights('./weights/my_model')
+    
+    # Restore the model's state,
+    # this requires a model with the same architecture.
+    model.load_weights('./weights/my_model')
+
+默认情况下，这会以TensorFlow检查点文件格式保存模型的权重。 权重也可以保存为Keras HDF5格式（Keras的多后端实现的默认值）：
+
+    # Save weights to a HDF5 file
+    model.save_weights('my_model.h5', save_format='h5')
+    
+    # Restore the model's state
+    model.load_weights('my_model.h5')
+
+### Configuration only ###
+
+可以保存模型的配置 - 这可以在没有任何权重的情况下序列化模型体系结构。 即使没有定义原始模型的代码，保存的配置也可以重新创建和初始化相同的模型。 Keras支持JSON和YAML序列化格式：
+
+    # Serialize a model to JSON format
+    json_string = model.to_json()
+    json_string
+
+*'{"backend": "tensorflow", "keras_version": "2.1.6-tf", "config": {"name": "sequential_3", "layers": [{"config": {"units": 64, "kernel_regularizer": null, "activation": "relu", "bias_constraint": null, "trainable": true, "use_bias": true, "bias_initializer": {"config": {"dtype": "float32"}, "class_name": "Zeros"}, "activity_regularizer": null, "dtype": null, "kernel_constraint": null, "kernel_initializer": {"config": {"mode": "fan_avg", "seed": null, "distribution": "uniform", "scale": 1.0, "dtype": "float32"}, "class_name": "VarianceScaling"}, "name": "dense_17", "bias_regularizer": null}, "class_name": "Dense"}, {"config": {"units": 10, "kernel_regularizer": null, "activation": "softmax", "bias_constraint": null, "trainable": true, "use_bias": true, "bias_initializer": {"config": {"dtype": "float32"}, "class_name": "Zeros"}, "activity_regularizer": null, "dtype": null, "kernel_constraint": null, "kernel_initializer": {"config": {"mode": "fan_avg", "seed": null, "distribution": "uniform", "scale": 1.0, "dtype": "float32"}, "class_name": "VarianceScaling"}, "name": "dense_18", "bias_regularizer": null}, "class_name": "Dense"}]}, "class_name": "Sequential"}'*
+
+    import json
+    import pprint
+    pprint.pprint(json.loads(json_string))
+
+{'backend': 'tensorflow',
+ 'class_name': 'Sequential',
+ 'config': {'layers': [{'class_name': 'Dense',
+                        'config': {'activation': 'relu',
+                                   *'activity_regularizer': None,
+                                   'bias_constraint': None,
+                                   'bias_initializer': {'class_name': 'Zeros',
+                                                        'config': {'dtype': 'float32'}},
+                                   'bias_regularizer': None,
+                                   'dtype': None,
+                                   'kernel_constraint': None,
+                                   'kernel_initializer': {'class_name': 'VarianceScaling',
+                                                          'config': {'distribution': 'uniform',
+                                                                     'dtype': 'float32',
+                                                                     'mode': 'fan_avg',
+                                                                     'scale': 1.0,
+                                                                     'seed': None}},
+                                   'kernel_regularizer': None,
+                                   'name': 'dense_17',
+                                   'trainable': True,
+                                   'units': 64,
+                                   'use_bias': True}},
+                       {'class_name': 'Dense',
+                        'config': {'activation': 'softmax',
+                                   'activity_regularizer': None,
+                                   'bias_constraint': None,
+                                   'bias_initializer': {'class_name': 'Zeros',
+                                                        'config': {'dtype': 'float32'}},
+                                   'bias_regularizer': None,
+                                   'dtype': None,
+                                   'kernel_constraint': None,
+                                   'kernel_initializer': {'class_name': 'VarianceScaling',
+                                                          'config': {'distribution': 'uniform',
+                                                                     'dtype': 'float32',
+                                                                     'mode': 'fan_avg',
+                                                                     'scale': 1.0,
+                                                                     'seed': None}},
+                                   'kernel_regularizer': None,
+                                   'name': 'dense_18',
+                                   'trainable': True,
+                                   'units': 10,
+                                   'use_bias': True}}],
+            'name': 'sequential_3'},
+ 'keras_version': '2.1.6-tf'}*
+
+从json重新创建模型（刚刚初始化）。
+
+    fresh_model = tf.keras.models.model_from_json(json_string)
+
+将模型序列化为YAML格式
+
+    yaml_string = model.to_yaml()
+    print(yaml_string)
+
+*backend: tensorflow
+class_name: Sequential
+config:
+  layers:
+  - class_name: Dense
+    config:
+      activation: relu
+      activity_regularizer: null
+      bias_constraint: null
+      bias_initializer:
+        class_name: Zeros
+        config: {dtype: float32}
+      bias_regularizer: null
+      dtype: null
+      kernel_constraint: null
+      kernel_initializer:
+        class_name: VarianceScaling
+        config: {distribution: uniform, dtype: float32, mode: fan_avg, scale: 1.0,
+          seed: null}
+      kernel_regularizer: null
+      name: dense_17
+      trainable: true
+      units: 64
+      use_bias: true
+  - class_name: Dense
+    config:
+      activation: softmax
+      activity_regularizer: null
+      bias_constraint: null
+      bias_initializer:
+        class_name: Zeros
+        config: {dtype: float32}
+      bias_regularizer: null
+      dtype: null
+      kernel_constraint: null
+      kernel_initializer:
+        class_name: VarianceScaling
+        config: {distribution: uniform, dtype: float32, mode: fan_avg, scale: 1.0,
+          seed: null}
+      kernel_regularizer: null
+      name: dense_18
+      trainable: true
+      units: 10
+      use_bias: true
+  name: sequential_3
+keras_version: 2.1.6-tf*
+
+从yaml重新创建模型
+
+    fresh_model = tf.keras.models.model_from_yaml(yaml_string)
+
+*注意：子类模型不可序列化，因为它们的体系结构由调用方法体中的Python代码定义。*
+
+### Entire model ###
+
+整个模型可以保存到包含权重值，模型配置甚至优化器配置的文件中。 这允许您检查模型并稍后从完全相同的状态恢复训练 - 无需访问原始代码。
+
+    # Create a trivial model
+    model = tf.keras.Sequential([
+      layers.Dense(10, activation='softmax', input_shape=(32,)),
+      layers.Dense(10, activation='softmax')
+    ])
+    model.compile(optimizer='rmsprop',
+      loss='categorical_crossentropy',
+      metrics=['accuracy'])
+    model.fit(data, labels, batch_size=32, epochs=5)
+    
+    
+    # Save entire model to a HDF5 file
+    model.save('my_model.h5')
+    
+    # Recreate the exact same model, including weights and optimizer.
+    model = tf.keras.models.load_model('my_model.h5')
+
+*Epoch 1/5
+1000/1000 [==============================] - 0s 297us/step - loss: 11.5009 - acc: 0.0980
+Epoch 2/5
+1000/1000 [==============================] - 0s 76us/step - loss: 11.4844 - acc: 0.0960
+Epoch 3/5
+1000/1000 [==============================] - 0s 77us/step - loss: 11.4791 - acc: 0.0850
+Epoch 4/5
+1000/1000 [==============================] - 0s 78us/step - loss: 11.4771 - acc: 0.1020
+Epoch 5/5
+1000/1000 [==============================] - 0s 79us/step - loss: 11.4763 - acc: 0.0900*
+
+## Eager execution ##
+
+Eager execution是一个必要的编程环境，可以立即评估操作。 这对于Keras不是必需的，但是由tf.keras支持，对于检查程序和调试很有用。
+
+所有tf.keras模型构建API都与Eager execution兼容。 虽然可以使用顺序和功能API，但是Eager execution尤其有利于模型子类化和构建自定义层 - 需要您将前向传递作为代码编写的API（而不是通过组合现有层来创建模型的API）。
+
+有关使用具有自定义训练循环和tf.GradientTape的Keras模型的示例，请参阅Eager execution指南。
+
+## Distribution ##
+
+### Estimators ###
+
+Estimators API用于分布式环境的训练模型。 这针对行业用例，例如可以导出模型进行生产的大型数据集的分布式训练。
+
+通过使用tf.keras.estimator.model_to_estimator将模型转换为tf.estimator.Estimator对象，可以使用tf.estimator API训练tf.keras.Model。 请参阅从Keras模型创建Estimators。
+
+    model = tf.keras.Sequential([layers.Dense(10,activation='softmax'),
+      layers.Dense(10,activation='softmax')])
+    
+    model.compile(optimizer=tf.train.RMSPropOptimizer(0.001),
+      loss='categorical_crossentropy',
+      metrics=['accuracy'])
+    
+    estimator = tf.keras.estimator.model_to_estimator(model)
+
+*INFO:tensorflow:Using the Keras model provided.
+INFO:tensorflow:Using default config.
+WARNING:tensorflow:Using temporary folder as model directory: /tmp/tmpm0ljzq8s
+INFO:tensorflow:Using config: {'_experimental_distribute': None, '_master': '', '_eval_distribute': None, '_num_ps_replicas': 0, '_protocol': None, '_global_id_in_cluster': 0, '_save_summary_steps': 100, '_tf_random_seed': None, '_model_dir': '/tmp/tmpm0ljzq8s', '_evaluation_master': '', '_task_id': 0, '_keep_checkpoint_max': 5, '_save_checkpoints_steps': None, '_service': None, '_num_worker_replicas': 1, '_save_checkpoints_secs': 600, '_is_chief': True, '_cluster_spec': <tensorflow.python.training.server_lib.ClusterSpec object at 0x7fad8c5d3e10>, '_keep_checkpoint_every_n_hours': 10000, '_log_step_count_steps': 100, '_session_config': allow_soft_placement: true
+graph_options {
+  rewrite_options {
+    meta_optimizer_iterations: ONE
+  }
+}
+, '_train_distribute': None, '_task_type': 'worker', '_device_fn': None}*
 
 
+*Note: Enable eager execution for debugging Estimator input functions and inspecting data.*
 
+*注意：启用预先执行以调试Estimator输入函数和检查数据。*
 
+### Multiple GPUs ###
 
+tf.keras模型可以使用tf.contrib.distribute.DistributionStrategy在多个GPU上运行。 此API在多个GPU上提供分布式训练，几乎不对现有代码进行任何更改。
 
+目前，tf.contrib.distribute.MirroredStrategy是唯一受支持的分发策略。 MirroredStrategy使用all-reduce在一台机器上进行同步训练的图形内复制。 要将DistributionStrategy与Keras一起使用，请使用tf.keras.estimator.model_to_estimator将tf.keras.Model转换为tf.estimator.Estimator，然后训练estimator
 
+以下示例在单个计算机上的多个GPU之间分发tf.keras.Model。
 
+首先，定义一个简单的模型：
+
+    model = tf.keras.Sequential()
+    model.add(layers.Dense(16, activation='relu', input_shape=(10,)))
+    model.add(layers.Dense(1, activation='sigmoid'))
+    
+    optimizer = tf.train.GradientDescentOptimizer(0.2)
+    
+    model.compile(loss='binary_crossentropy', optimizer=optimizer)
+    model.summary()
+
+*_________________________________________________________________
+Layer (type)                 Output Shape              Param #   
+=================================================================
+dense_23 (Dense)             (None, 16)                176       
+_________________________________________________________________
+dense_24 (Dense)             (None, 1)                 17        
+=================================================================
+Total params: 193
+Trainable params: 193
+Non-trainable params: 0
+_________________________________________________________________*
+
+定义输入管道。 input_fn返回一个tf.data.Dataset对象，用于在多个设备之间分配数据 - 每个设备处理输入批处理的一部分。
+
+    def input_fn():
+      x = np.random.random((1024, 10))
+      y = np.random.randint(2, size=(1024, 1))
+      x = tf.cast(x, tf.float32)
+      dataset = tf.data.Dataset.from_tensor_slices((x, y))
+      dataset = dataset.repeat(10)
+      dataset = dataset.batch(32)
+      return dataset
+
+接下来，创建一个tf.estimator.RunConfig并将train_distribute参数设置为tf.contrib.distribute.MirroredStrategy实例。 创建MirroredStrategy时，您可以指定设备列表或设置num_gpus参数。 默认使用所有可用的GPU，如下所示：
+
+    strategy = tf.contrib.distribute.MirroredStrategy()
+    config = tf.estimator.RunConfig(train_distribute=strategy)
+
+*INFO:tensorflow:Initializing RunConfig with distribution strategies.
+INFO:tensorflow:Not using Distribute Coordinator.*
+
+将Keras模型转换为tf.estimator.Estimator实例：
+
+    keras_estimator = tf.keras.estimator.model_to_estimator(
+      keras_model=model,
+      config=config,
+      model_dir='/tmp/model_dir')
+
+*INFO:tensorflow:Using the Keras model provided.
+INFO:tensorflow:Using config: {'_experimental_distribute': None, '_master': '', '_eval_distribute': None, '_num_ps_replicas': 0, '_protocol': None, '_global_id_in_cluster': 0, '_save_summary_steps': 100, '_tf_random_seed': None, '_model_dir': '/tmp/model_dir', '_evaluation_master': '', '_task_id': 0, '_keep_checkpoint_max': 5, '_save_checkpoints_steps': None, '_service': None, '_num_worker_replicas': 1, '_save_checkpoints_secs': 600, '_is_chief': True, '_cluster_spec': <tensorflow.python.training.server_lib.ClusterSpec object at 0x7faed9e1c550>, '_keep_checkpoint_every_n_hours': 10000, '_log_step_count_steps': 100, '_distribute_coordinator_mode': None, '_session_config': allow_soft_placement: true
+graph_options {
+  rewrite_options {
+    meta_optimizer_iterations: ONE
+  }
+}
+, '_train_distribute': <tensorflow.contrib.distribute.python.mirrored_strategy.MirroredStrategy object at 0x7faed9e1c588>, '_task_type': 'worker', '_device_fn': None}*
+
+最后，通过提供input_fn和steps参数来训练Estimator实例：
+
+    keras_estimator.train(input_fn=input_fn, steps=10)
+
+*WARNING:tensorflow:Not all devices in DistributionStrategy are visible to TensorFlow session.
+INFO:tensorflow:Calling model_fn.
+INFO:tensorflow:Done calling model_fn.
+INFO:tensorflow:Warm-starting with WarmStartSettings: WarmStartSettings(ckpt_to_initialize_from='/tmp/model_dir/keras/keras_model.ckpt', vars_to_warm_start='.*', var_name_to_vocab_info={}, var_name_to_prev_var_name={})
+INFO:tensorflow:Warm-starting from: ('/tmp/model_dir/keras/keras_model.ckpt',)
+INFO:tensorflow:Warm-starting variable: dense_24/kernel; prev_var_name: Unchanged
+INFO:tensorflow:Warm-starting variable: dense_23/bias; prev_var_name: Unchanged
+INFO:tensorflow:Warm-starting variable: dense_24/bias; prev_var_name: Unchanged
+INFO:tensorflow:Warm-starting variable: dense_23/kernel; prev_var_name: Unchanged
+INFO:tensorflow:Create CheckpointSaverHook.
+INFO:tensorflow:Graph was finalized.
+INFO:tensorflow:Running local_init_op.
+INFO:tensorflow:Done running local_init_op.
+INFO:tensorflow:Saving checkpoints for 0 into /tmp/model_dir/model.ckpt.
+INFO:tensorflow:Initialize system
+INFO:tensorflow:loss = 0.7582453, step = 0
+INFO:tensorflow:Saving checkpoints for 10 into /tmp/model_dir/model.ckpt.
+INFO:tensorflow:Finalize system.
+INFO:tensorflow:Loss for final step: 0.6743419.*
+
+## 结束 ##
 
